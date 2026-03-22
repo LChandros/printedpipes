@@ -36,6 +36,24 @@ const PARAM_RANGES = {
     thickness: { min: 1, max: 10, default: 3 },
     chamfer: { min: 0, max: 5, default: 1.5 },
     gap: { min: 0, max: 3, default: 0.5 },
+  },
+  coupling: {
+    pipe_id: { min: 10, max: 150, default: 25.4 },
+    wall_thickness: { min: 1, max: 10, default: 3 },
+    length: { min: 20, max: 100, default: 40 },
+    ridge_width: { min: 1, max: 10, default: 3 },
+  },
+  cap: {
+    pipe_id: { min: 10, max: 150, default: 25.4 },
+    wall_thickness: { min: 1, max: 10, default: 3 },
+    depth: { min: 5, max: 50, default: 15 },
+  },
+  tee: {
+    pipe_id: { min: 10, max: 150, default: 25.4 },
+    wall_thickness: { min: 1, max: 10, default: 3 },
+    branch_angle: { min: 15, max: 90, default: 90 },
+    main_length: { min: 30, max: 150, default: 60 },
+    branch_length: { min: 15, max: 100, default: 30 },
   }
 };
 

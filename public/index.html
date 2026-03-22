@@ -16,8 +16,8 @@
   .sidebar .subtitle { font-size: 12px; color: #888; margin-bottom: 20px; }
 
   /* Tabs */
-  .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
-  .tab { flex: 1; padding: 10px; text-align: center; background: #0f3460; border: none; color: #aaa; cursor: pointer; border-radius: 6px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .tabs { display: flex; gap: 4px; margin-bottom: 20px; flex-wrap: wrap; }
+  .tab { flex: 1; padding: 8px 4px; text-align: center; background: #0f3460; border: none; color: #aaa; cursor: pointer; border-radius: 6px; font-size: 12px; font-weight: 600; transition: all 0.2s; min-width: 60px; }
   .tab.active { background: #e94560; color: white; }
   .tab:hover:not(.active) { background: #1a4080; }
 
@@ -59,6 +59,9 @@
     <div class="tabs">
       <button class="tab active" data-type="elbow" onclick="switchType('elbow')">Elbow</button>
       <button class="tab" data-type="reducer" onclick="switchType('reducer')">Reducer</button>
+      <button class="tab" data-type="tee" onclick="switchType('tee')">Tee</button>
+      <button class="tab" data-type="coupling" onclick="switchType('coupling')">Coupling</button>
+      <button class="tab" data-type="cap" onclick="switchType('cap')">Cap</button>
       <button class="tab" data-type="escutcheon" onclick="switchType('escutcheon')">Escutcheon</button>
     </div>
 
@@ -122,6 +125,66 @@
       <div class="control-group">
         <label>Stub Length <span id="v-r_stub_length">20mm</span></label>
         <input type="range" id="r_stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Tee controls -->
+    <div id="tee-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-t_pipe_id">25.4mm</span></label>
+        <input type="range" id="t_pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-t_wall_thickness">3mm</span></label>
+        <input type="range" id="t_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Branch Angle <span id="v-branch_angle">90&deg;</span></label>
+        <input type="range" id="branch_angle" min="15" max="90" step="1" value="90" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Main Pipe Length <span id="v-main_length">60mm</span></label>
+        <input type="range" id="main_length" min="30" max="150" step="1" value="60" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Branch Length <span id="v-branch_length">30mm</span></label>
+        <input type="range" id="branch_length" min="15" max="100" step="1" value="30" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Coupling controls -->
+    <div id="coupling-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-c_pipe_id">25.4mm</span></label>
+        <input type="range" id="c_pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-c_wall_thickness">3mm</span></label>
+        <input type="range" id="c_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Total Length <span id="v-c_length">40mm</span></label>
+        <input type="range" id="c_length" min="20" max="100" step="1" value="40" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Ridge Width <span id="v-ridge_width">3mm</span></label>
+        <input type="range" id="ridge_width" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Cap controls -->
+    <div id="cap-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-cap_pipe_id">25.4mm</span></label>
+        <input type="range" id="cap_pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-cap_wall_thickness">3mm</span></label>
+        <input type="range" id="cap_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Cap Depth <span id="v-cap_depth">15mm</span></label>
+        <input type="range" id="cap_depth" min="5" max="50" step="1" value="15" oninput="updateParam(this)">
       </div>
     </div>
 
@@ -431,6 +494,118 @@ function generateEscutcheon(pipeOd, plateOd, thickness, chamfer, gapTol) {
   return group;
 }
 
+// Generate coupling: LatheGeometry of cross-section with internal ridge.
+function generateCoupling(pipeId, wallThick, length, ridgeWidth) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const halfLen = length / 2;
+  const halfRidge = ridgeWidth / 2;
+
+  // Profile: outer wall up, across top, inner wall down (with ridge bump), across bottom
+  const profile = [
+    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(outerR, length),
+    new THREE.Vector2(innerR, length),
+    // Inner wall top half down to ridge
+    new THREE.Vector2(innerR, halfLen + halfRidge),
+    // Ridge (solid ring)
+    new THREE.Vector2(0.001, halfLen + halfRidge),
+    new THREE.Vector2(0.001, halfLen - halfRidge),
+    // Inner wall bottom half
+    new THREE.Vector2(innerR, halfLen - halfRidge),
+    new THREE.Vector2(innerR, 0),
+    new THREE.Vector2(outerR, 0),
+  ];
+
+  const geo = new THREE.LatheGeometry(profile, 64, 0, Math.PI * 2);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = -length / 2;
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+// Generate cap: LatheGeometry of cup cross-section.
+function generateCap(pipeId, wallThick, depth) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const totalH = depth + wallThick;
+
+  // Profile: outer wall up, across sealed top, down inner wall, across bottom opening
+  const profile = [
+    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(outerR, totalH),
+    // Sealed top
+    new THREE.Vector2(0.001, totalH),
+    new THREE.Vector2(0.001, depth),
+    // Inner wall
+    new THREE.Vector2(innerR, depth),
+    new THREE.Vector2(innerR, 0),
+    // Bottom opening ring
+    new THREE.Vector2(outerR, 0),
+  ];
+
+  const geo = new THREE.LatheGeometry(profile, 64, 0, Math.PI * 2);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = -totalH / 2;
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+// Generate tee: main pipe + branch pipe using sweep geometry.
+function generateTee(pipeId, wallThick, branchAngleDeg, mainLen, branchLen) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const branchAngleRad = branchAngleDeg * Math.PI / 180;
+  const group = new THREE.Group();
+
+  // Main pipe (along Y axis) - LatheGeometry
+  const mainProfile = [
+    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(outerR, mainLen),
+    new THREE.Vector2(innerR, mainLen),
+    new THREE.Vector2(innerR, 0),
+    new THREE.Vector2(outerR, 0),
+  ];
+  const mainGeo = new THREE.LatheGeometry(mainProfile, 64, 0, Math.PI * 2);
+  const mainMesh = new THREE.Mesh(mainGeo, mat);
+  mainMesh.position.y = -mainLen / 2;
+  group.add(mainMesh);
+
+  // Branch pipe - same profile but rotated and positioned
+  const branchProfile = [
+    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(outerR, branchLen + outerR),
+    new THREE.Vector2(innerR, branchLen + outerR),
+    new THREE.Vector2(innerR, 0),
+    new THREE.Vector2(outerR, 0),
+  ];
+  const branchGeo = new THREE.LatheGeometry(branchProfile, 64, 0, Math.PI * 2);
+  const branchMesh = new THREE.Mesh(branchGeo, mat);
+
+  // Branch starts at center of main pipe, angled
+  // Default branch_angle=90 means perpendicular (along X)
+  // In OpenSCAD: rotate([0, -(90-branch_angle), 0]) which at 90 deg = no rotation = along Z
+  // For the preview: branch extends along a direction rotated from Y axis
+  // At 90°: branch goes along +X. At 45°: branch angles 45° from main.
+  branchMesh.rotation.z = -(Math.PI / 2 - branchAngleRad + Math.PI / 2);
+  // Simpler: at branch_angle=90 (perpendicular), rotate Z by -PI/2 to go from Y to X
+  // At branch_angle=A, rotate by -(PI/2 - (PI/2 - A)) = -A... let me just think:
+  // We want the branch along direction that's branchAngle from the main (Y) axis.
+  // At 90°: perpendicular = along X. Rotate Y->X = rotate -PI/2 around Z.
+  // At 45°: 45° from Y toward X. Rotate -45° around Z.
+  // General: rotate -(PI/2 - (PI/2 - branchAngle)) = nope...
+  // Just: rotate -branchAngle around Z. At 90° that rotates Y to X. At 45° rotates Y 45° toward X. Yes.
+  branchMesh.rotation.set(0, 0, -branchAngleRad);
+
+  group.add(branchMesh);
+
+  return group;
+}
+
 function updatePreview() {
   clearMesh();
 
@@ -465,6 +640,33 @@ function updatePreview() {
 
       document.getElementById('dims').textContent =
         `Pipe OD: ${pipeOd.toFixed(1)}mm | Plate: ${plateOd.toFixed(0)}mm | Thick: ${thick}mm | Hole: ${(pipeOd + gap*2).toFixed(1)}mm`;
+    } else if (currentType === 'coupling') {
+      const pipeId = parseFloat(document.getElementById('c_pipe_id').value);
+      const wall = parseFloat(document.getElementById('c_wall_thickness').value);
+      const len = parseFloat(document.getElementById('c_length').value);
+      const ridge = parseFloat(document.getElementById('ridge_width').value);
+      currentGroup = generateCoupling(pipeId, wall, len, ridge);
+
+      document.getElementById('dims').textContent =
+        `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Length: ${len}mm | Ridge: ${ridge}mm`;
+    } else if (currentType === 'cap') {
+      const pipeId = parseFloat(document.getElementById('cap_pipe_id').value);
+      const wall = parseFloat(document.getElementById('cap_wall_thickness').value);
+      const depth = parseFloat(document.getElementById('cap_depth').value);
+      currentGroup = generateCap(pipeId, wall, depth);
+
+      document.getElementById('dims').textContent =
+        `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Depth: ${depth}mm`;
+    } else if (currentType === 'tee') {
+      const pipeId = parseFloat(document.getElementById('t_pipe_id').value);
+      const wall = parseFloat(document.getElementById('t_wall_thickness').value);
+      const bAngle = parseFloat(document.getElementById('branch_angle').value);
+      const mainL = parseFloat(document.getElementById('main_length').value);
+      const branchL = parseFloat(document.getElementById('branch_length').value);
+      currentGroup = generateTee(pipeId, wall, bAngle, mainL, branchL);
+
+      document.getElementById('dims').textContent =
+        `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Branch: ${bAngle}\u00B0 | Main: ${mainL}mm`;
     }
 
     scene.add(currentGroup);
@@ -495,15 +697,16 @@ function animate() {
 window.switchType = function(type) {
   currentType = type;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
-  document.getElementById('elbow-controls').style.display = type === 'elbow' ? 'block' : 'none';
-  document.getElementById('reducer-controls').style.display = type === 'reducer' ? 'block' : 'none';
-  document.getElementById('escutcheon-controls').style.display = type === 'escutcheon' ? 'block' : 'none';
+  ['elbow', 'reducer', 'escutcheon', 'coupling', 'cap', 'tee'].forEach(t => {
+    const el = document.getElementById(t + '-controls');
+    if (el) el.style.display = type === t ? 'block' : 'none';
+  });
   updatePreview();
 };
 
 window.updateParam = function(el) {
   const val = parseFloat(el.value);
-  const suffix = el.id === 'angle' ? '\u00B0' : 'mm';
+  const suffix = (el.id === 'angle' || el.id === 'branch_angle') ? '\u00B0' : 'mm';
   const label = document.getElementById('v-' + el.id);
   if (label) label.textContent = val + suffix;
   updatePreview();
@@ -512,18 +715,20 @@ window.updateParam = function(el) {
 window.setPreset = function(diameter) {
   document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
   if (event && event.target) event.target.classList.add('active');
-  if (currentType === 'elbow') {
-    const slider = document.getElementById('pipe_id');
-    slider.value = diameter;
-    window.updateParam(slider);
-  } else if (currentType === 'reducer') {
-    const slider = document.getElementById('id_large');
-    slider.value = diameter;
-    window.updateParam(slider);
-  } else if (currentType === 'escutcheon') {
-    // Presets are pipe ID, escutcheon needs pipe OD (add ~3mm for wall)
+  const sliderMap = {
+    elbow: 'pipe_id',
+    reducer: 'id_large',
+    coupling: 'c_pipe_id',
+    cap: 'cap_pipe_id',
+    tee: 't_pipe_id',
+  };
+  if (currentType === 'escutcheon') {
     const slider = document.getElementById('pipe_od');
     slider.value = diameter + 3;
+    window.updateParam(slider);
+  } else if (sliderMap[currentType]) {
+    const slider = document.getElementById(sliderMap[currentType]);
+    slider.value = diameter;
     window.updateParam(slider);
   }
 };
@@ -557,6 +762,27 @@ window.downloadSTL = async function() {
       thickness: document.getElementById('e_thickness').value,
       chamfer: document.getElementById('chamfer').value,
       gap: document.getElementById('gap').value,
+    };
+  } else if (currentType === 'coupling') {
+    params = {
+      pipe_id: document.getElementById('c_pipe_id').value,
+      wall_thickness: document.getElementById('c_wall_thickness').value,
+      length: document.getElementById('c_length').value,
+      ridge_width: document.getElementById('ridge_width').value,
+    };
+  } else if (currentType === 'cap') {
+    params = {
+      pipe_id: document.getElementById('cap_pipe_id').value,
+      wall_thickness: document.getElementById('cap_wall_thickness').value,
+      depth: document.getElementById('cap_depth').value,
+    };
+  } else if (currentType === 'tee') {
+    params = {
+      pipe_id: document.getElementById('t_pipe_id').value,
+      wall_thickness: document.getElementById('t_wall_thickness').value,
+      branch_angle: document.getElementById('branch_angle').value,
+      main_length: document.getElementById('main_length').value,
+      branch_length: document.getElementById('branch_length').value,
     };
   }
 
