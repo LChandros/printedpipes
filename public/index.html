@@ -777,112 +777,33 @@ function generateFlange(pipeId, wallThick, flangeOd, plateThick, stubLen, boltCo
   const boltR = boltDiam / 2;
   const boltCircleR = boltCircle / 2;
   const group = new THREE.Group();
-  const totalH = plateThick + stubLen;
-  const yOff = -totalH / 2;
 
-  // Bolt hole centers (in XZ plane)
-  const boltCenters = [];
-  for (let i = 0; i < boltCount; i++) {
-    const a = (i / boltCount) * Math.PI * 2;
-    boltCenters.push({ x: Math.cos(a) * boltCircleR, z: Math.sin(a) * boltCircleR });
-  }
-
-  function isInBoltHole(x, z) {
-    for (const b of boltCenters) {
-      const dx = x - b.x, dz = z - b.z;
-      if (dx * dx + dz * dz < boltR * boltR) return true;
-    }
-    return false;
-  }
-
-  // Build flange plate as BufferGeometry disc (annulus from innerR to flangeR)
-  // with faces skipped where bolt holes are, then add top/bottom faces + outer wall + stub
-  const ringSegs = 64;
-  const radialSegs = 12; // rings from center to edge
-  const positions = [];
-  const indices = [];
-
-  // Generate vertex grid: radialSegs+1 rings from innerR to flangeR, each with ringSegs points
-  // Plus 2 Y levels (bottom=0, top=plateThick)
-  for (let yi = 0; yi <= 1; yi++) {
-    const y = yi * plateThick + yOff;
-    for (let ri = 0; ri <= radialSegs; ri++) {
-      const r = innerR + (ri / radialSegs) * (flangeR - innerR);
-      for (let ai = 0; ai < ringSegs; ai++) {
-        const theta = (ai / ringSegs) * Math.PI * 2;
-        positions.push(r * Math.cos(theta), y, r * Math.sin(theta));
-      }
-    }
-  }
-
-  const ringsPerLevel = radialSegs + 1;
-  const vertsPerLevel = ringsPerLevel * ringSegs;
-
-  // Top and bottom faces (skip bolt holes)
-  for (let yi = 0; yi <= 1; yi++) {
-    const base = yi * vertsPerLevel;
-    for (let ri = 0; ri < radialSegs; ri++) {
-      for (let ai = 0; ai < ringSegs; ai++) {
-        const an = (ai + 1) % ringSegs;
-        const i00 = base + ri * ringSegs + ai;
-        const i01 = base + ri * ringSegs + an;
-        const i10 = base + (ri + 1) * ringSegs + ai;
-        const i11 = base + (ri + 1) * ringSegs + an;
-
-        // Check quad center
-        const cx = (positions[i00*3] + positions[i11*3]) / 2;
-        const cz = (positions[i00*3+2] + positions[i11*3+2]) / 2;
-        if (isInBoltHole(cx, cz)) continue;
-
-        if (yi === 0) {
-          // Bottom face (normal -Y)
-          indices.push(i00, i01, i10, i01, i11, i10);
-        } else {
-          // Top face (normal +Y)
-          indices.push(i00, i10, i01, i01, i10, i11);
-        }
-      }
-    }
-  }
-
-  // Outer wall of plate (connect bottom flangeR ring to top flangeR ring)
-  const outerRingBot = radialSegs * ringSegs; // last ring of bottom level
-  const outerRingTop = vertsPerLevel + radialSegs * ringSegs;
-  for (let ai = 0; ai < ringSegs; ai++) {
-    const an = (ai + 1) % ringSegs;
-    const b0 = outerRingBot + ai, b1 = outerRingBot + an;
-    const t0 = outerRingTop + ai, t1 = outerRingTop + an;
-    indices.push(b0, t0, b1, b1, t0, t1);
-  }
-
-  // Inner wall of plate (connect bottom innerR ring to top innerR ring)
-  const innerRingBot = 0;
-  const innerRingTop = vertsPerLevel;
-  for (let ai = 0; ai < ringSegs; ai++) {
-    const an = (ai + 1) % ringSegs;
-    const b0 = innerRingBot + ai, b1 = innerRingBot + an;
-    const t0 = innerRingTop + ai, t1 = innerRingTop + an;
-    indices.push(b0, b1, t0, b1, t1, t0);
-  }
-
-  const plateGeo = new THREE.BufferGeometry();
-  plateGeo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
-  plateGeo.setIndex(indices);
-  plateGeo.computeVertexNormals();
-  group.add(new THREE.Mesh(plateGeo, mat));
-
-  // Pipe stub on top (LatheGeometry, simple and clean)
-  const stubProfile = [
-    new THREE.Vector2(outerR, 0),
-    new THREE.Vector2(outerR, stubLen),
-    new THREE.Vector2(innerR, stubLen),
+  // Flange plate: LatheGeometry ring profile
+  const plateProfile = [
+    new THREE.Vector2(flangeR, 0),
+    new THREE.Vector2(flangeR, plateThick),
+    new THREE.Vector2(outerR, plateThick),
+    new THREE.Vector2(outerR, plateThick + stubLen),
+    new THREE.Vector2(innerR, plateThick + stubLen),
     new THREE.Vector2(innerR, 0),
-    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(flangeR, 0),
   ];
-  const stubGeo = new THREE.LatheGeometry(stubProfile, 64, 0, Math.PI * 2);
-  const stubMesh = new THREE.Mesh(stubGeo, mat);
-  stubMesh.position.y = plateThick + yOff;
-  group.add(stubMesh);
+  const plateGeo = new THREE.LatheGeometry(plateProfile, 64, 0, Math.PI * 2);
+  const plateMesh = new THREE.Mesh(plateGeo, mat);
+  plateMesh.position.y = -(plateThick + stubLen) / 2;
+  group.add(plateMesh);
+
+  // Bolt holes as dark cylinders
+  const boltMat = new THREE.MeshPhongMaterial({ color: 0x0a0a1a, side: THREE.DoubleSide });
+  for (let i = 0; i < boltCount; i++) {
+    const angle = (i / boltCount) * Math.PI * 2;
+    const bx = Math.cos(angle) * boltCircleR;
+    const bz = Math.sin(angle) * boltCircleR;
+    const boltGeo = new THREE.CylinderGeometry(boltR, boltR, plateThick + 0.2, 16);
+    const bolt = new THREE.Mesh(boltGeo, boltMat);
+    bolt.position.set(bx, -(plateThick + stubLen) / 2 + plateThick / 2, bz);
+    group.add(bolt);
+  }
 
   return group;
 }
@@ -956,14 +877,17 @@ function generateOffset(pipeId, wallThick, offsetDist, bendR, stubLen) {
     const phi = bendAngle - t * bendAngle; // sweeps from bendAngle back to 0
     const px = arc2CenterX - bendR * Math.cos(phi);
     const pz = arc2CenterZ - bendR * Math.sin(phi);
-    // pos = center - R*(cos(phi), 0, sin(phi)), phi decreasing along path
-    // dp/dphi = (R*sin(phi), 0, -R*cos(phi))
-    // phi decreasing => tangent = -dp/dphi = (-sin(phi), 0, cos(phi))
-    const tx = -Math.sin(phi);
-    const tz = Math.cos(phi);
+    // Tangent: derivative of (-cos(phi), 0, -sin(phi)) * d(phi)/dt, where phi decreases
+    // dphi/dt = -bendAngle, so tangent = (sin(phi), 0, cos(phi)) * (-1) * (-1) = (sin(phi), 0, cos(phi))...
+    // Let's just compute: direction from this point to next point
+    const phiNext = bendAngle - (Math.min(i + 0.5, bendSegs)) / bendSegs * bendAngle;
+    const nx = arc2CenterX - bendR * Math.cos(phiNext);
+    const nz = arc2CenterZ - bendR * Math.sin(phiNext);
+    const dx = nx - px, dz = nz - pz;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
     pathPoints.push({
       pos: new THREE.Vector3(px, 0, pz),
-      tan: new THREE.Vector3(tx, 0, tz),
+      tan: new THREE.Vector3(dx / len, 0, dz / len),
     });
   }
 
