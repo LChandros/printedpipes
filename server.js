@@ -54,6 +54,23 @@ const PARAM_RANGES = {
     branch_angle: { min: 15, max: 90, default: 90 },
     main_length: { min: 30, max: 150, default: 60 },
     branch_length: { min: 15, max: 100, default: 30 },
+  },
+  flange: {
+    pipe_id: { min: 10, max: 150, default: 25.4 },
+    wall_thickness: { min: 1, max: 10, default: 3 },
+    flange_od: { min: 40, max: 250, default: 80 },
+    plate_thickness: { min: 2, max: 15, default: 5 },
+    stub_length: { min: 5, max: 50, default: 20 },
+    bolt_count: { min: 2, max: 8, default: 4 },
+    bolt_diameter: { min: 3, max: 20, default: 8 },
+    bolt_circle: { min: 30, max: 200, default: 60 },
+  },
+  offset: {
+    pipe_id: { min: 10, max: 150, default: 25.4 },
+    wall_thickness: { min: 1, max: 10, default: 3 },
+    offset_distance: { min: 5, max: 100, default: 30 },
+    bend_radius: { min: 15, max: 200, default: 40 },
+    stub_length: { min: 5, max: 50, default: 20 },
   }
 };
 

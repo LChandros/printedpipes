@@ -63,6 +63,8 @@
       <button class="tab" data-type="coupling" onclick="switchType('coupling')">Coupling</button>
       <button class="tab" data-type="cap" onclick="switchType('cap')">Cap</button>
       <button class="tab" data-type="escutcheon" onclick="switchType('escutcheon')">Escutcheon</button>
+      <button class="tab" data-type="flange" onclick="switchType('flange')">Flange</button>
+      <button class="tab" data-type="offset" onclick="switchType('offset')">Offset</button>
     </div>
 
     <!-- Common pipe sizes -->
@@ -185,6 +187,66 @@
       <div class="control-group">
         <label>Cap Depth <span id="v-cap_depth">15mm</span></label>
         <input type="range" id="cap_depth" min="5" max="50" step="1" value="15" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Flange controls -->
+    <div id="flange-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-f_pipe_id">25.4mm</span></label>
+        <input type="range" id="f_pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-f_wall_thickness">3mm</span></label>
+        <input type="range" id="f_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Flange Diameter <span id="v-flange_od">80mm</span></label>
+        <input type="range" id="flange_od" min="40" max="250" step="1" value="80" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Plate Thickness <span id="v-plate_thickness">5mm</span></label>
+        <input type="range" id="plate_thickness" min="2" max="15" step="0.5" value="5" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Stub Length <span id="v-f_stub_length">20mm</span></label>
+        <input type="range" id="f_stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bolt Count <span id="v-bolt_count">4</span></label>
+        <input type="range" id="bolt_count" min="2" max="8" step="1" value="4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bolt Hole Diameter <span id="v-bolt_diameter">8mm</span></label>
+        <input type="range" id="bolt_diameter" min="3" max="20" step="0.5" value="8" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bolt Circle Diameter <span id="v-bolt_circle">60mm</span></label>
+        <input type="range" id="bolt_circle" min="30" max="200" step="1" value="60" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Offset controls -->
+    <div id="offset-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-o_pipe_id">25.4mm</span></label>
+        <input type="range" id="o_pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-o_wall_thickness">3mm</span></label>
+        <input type="range" id="o_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Offset Distance <span id="v-offset_distance">30mm</span></label>
+        <input type="range" id="offset_distance" min="5" max="100" step="1" value="30" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bend Radius <span id="v-o_bend_radius">40mm</span></label>
+        <input type="range" id="o_bend_radius" min="15" max="200" step="1" value="40" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Stub Length <span id="v-o_stub_length">20mm</span></label>
+        <input type="range" id="o_stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
       </div>
     </div>
 
@@ -555,54 +617,358 @@ function generateCap(pipeId, wallThick, depth) {
   return group;
 }
 
-// Generate tee: main pipe + branch pipe using sweep geometry.
+// Generate tee: BufferGeometry with hole cut in main pipe where branch connects.
 function generateTee(pipeId, wallThick, branchAngleDeg, mainLen, branchLen) {
   const innerR = pipeId / 2;
   const outerR = innerR + wallThick;
   const branchAngleRad = branchAngleDeg * Math.PI / 180;
+  const ringSegs = 32;
   const group = new THREE.Group();
 
-  // Main pipe (along Y axis) - LatheGeometry
-  const mainProfile = [
-    new THREE.Vector2(outerR, 0),
-    new THREE.Vector2(outerR, mainLen),
-    new THREE.Vector2(innerR, mainLen),
+  // Branch direction: at 90° = along +X, at 45° = 45° from Y toward X
+  const branchDir = new THREE.Vector3(
+    Math.sin(branchAngleRad), Math.cos(branchAngleRad), 0
+  ).normalize();
+
+  // Check if a point on the main pipe wall is inside the branch cylinder opening
+  function isInsideBranch(px, py, pz) {
+    const p = new THREE.Vector3(px, py, pz);
+    const proj = p.dot(branchDir);
+    if (proj < 0) return false; // only cut on the outward side
+    const closest = branchDir.clone().multiplyScalar(proj);
+    const dist = p.clone().sub(closest).length();
+    return dist < innerR;
+  }
+
+  // --- Main pipe (along Y, centered) ---
+  const mainSegs = 40;
+  const mainPositions = [];
+  const mainIndices = [];
+  const vertsPerRing = ringSegs * 2;
+
+  for (let s = 0; s <= mainSegs; s++) {
+    const y = -mainLen / 2 + (s / mainSegs) * mainLen;
+    for (let r = 0; r < ringSegs; r++) {
+      const theta = (r / ringSegs) * Math.PI * 2;
+      const c = Math.cos(theta);
+      const si = Math.sin(theta);
+      mainPositions.push(outerR * c, y, outerR * si);
+      mainPositions.push(innerR * c, y, innerR * si);
+    }
+  }
+
+  for (let s = 0; s < mainSegs; s++) {
+    for (let r = 0; r < ringSegs; r++) {
+      const rn = (r + 1) % ringSegs;
+      const base0 = s * vertsPerRing;
+      const base1 = (s + 1) * vertsPerRing;
+      const o00 = base0 + r * 2;
+      const o01 = base0 + rn * 2;
+      const o10 = base1 + r * 2;
+      const o11 = base1 + rn * 2;
+
+      // Check quad center (outer surface) - skip if inside branch opening
+      const cx = (mainPositions[o00 * 3] + mainPositions[o10 * 3] + mainPositions[o01 * 3] + mainPositions[o11 * 3]) / 4;
+      const cy = (mainPositions[o00 * 3 + 1] + mainPositions[o10 * 3 + 1] + mainPositions[o01 * 3 + 1] + mainPositions[o11 * 3 + 1]) / 4;
+      const cz = (mainPositions[o00 * 3 + 2] + mainPositions[o10 * 3 + 2] + mainPositions[o01 * 3 + 2] + mainPositions[o11 * 3 + 2]) / 4;
+
+      if (isInsideBranch(cx, cy, cz)) continue;
+
+      mainIndices.push(o00, o10, o01, o01, o10, o11);
+      mainIndices.push(o00 + 1, o01 + 1, o10 + 1, o01 + 1, o11 + 1, o10 + 1);
+    }
+  }
+
+  // Main pipe end caps
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = r * 2, o1 = rn * 2, i0 = r * 2 + 1, i1 = rn * 2 + 1;
+    mainIndices.push(o0, i0, o1, o1, i0, i1);
+  }
+  const lastMain = mainSegs * vertsPerRing;
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = lastMain + r * 2, o1 = lastMain + rn * 2;
+    const i0 = lastMain + r * 2 + 1, i1 = lastMain + rn * 2 + 1;
+    mainIndices.push(o0, o1, i0, o1, i1, i0);
+  }
+
+  const mainGeo = new THREE.BufferGeometry();
+  mainGeo.setAttribute('position', new THREE.Float32BufferAttribute(mainPositions, 3));
+  mainGeo.setIndex(mainIndices);
+  mainGeo.computeVertexNormals();
+  group.add(new THREE.Mesh(mainGeo, mat));
+
+  // --- Branch pipe (sweep along branchDir, open at base) ---
+  const branchSegs = 10;
+  const branchPositions = [];
+  const branchIndices = [];
+
+  // Build local frame for branch cross-section
+  const T = branchDir.clone();
+  const upRef = new THREE.Vector3(0, 0, 1);
+  const B = new THREE.Vector3().crossVectors(T, upRef).normalize();
+  const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+  // Start slightly inside main pipe, end at branchLen + outerR from origin
+  const startDist = outerR * 0.3;
+  const endDist = branchLen + outerR;
+
+  for (let s = 0; s <= branchSegs; s++) {
+    const t = s / branchSegs;
+    const dist = startDist + t * (endDist - startDist);
+    const center = branchDir.clone().multiplyScalar(dist);
+
+    for (let r = 0; r < ringSegs; r++) {
+      const theta = (r / ringSegs) * Math.PI * 2;
+      const c = Math.cos(theta);
+      const si = Math.sin(theta);
+      branchPositions.push(
+        center.x + B.x * c * outerR + N.x * si * outerR,
+        center.y + B.y * c * outerR + N.y * si * outerR,
+        center.z + B.z * c * outerR + N.z * si * outerR,
+      );
+      branchPositions.push(
+        center.x + B.x * c * innerR + N.x * si * innerR,
+        center.y + B.y * c * innerR + N.y * si * innerR,
+        center.z + B.z * c * innerR + N.z * si * innerR,
+      );
+    }
+  }
+
+  // Stitch branch rings
+  for (let s = 0; s < branchSegs; s++) {
+    for (let r = 0; r < ringSegs; r++) {
+      const rn = (r + 1) % ringSegs;
+      const base0 = s * vertsPerRing;
+      const base1 = (s + 1) * vertsPerRing;
+      const o00 = base0 + r * 2;
+      const o01 = base0 + rn * 2;
+      const o10 = base1 + r * 2;
+      const o11 = base1 + rn * 2;
+      branchIndices.push(o00, o10, o01, o01, o10, o11);
+      branchIndices.push(o00 + 1, o01 + 1, o10 + 1, o01 + 1, o11 + 1, o10 + 1);
+    }
+  }
+
+  // Only cap the tip of the branch (base stays open = the connection hole)
+  const lastBranch = branchSegs * vertsPerRing;
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = lastBranch + r * 2, o1 = lastBranch + rn * 2;
+    const i0 = lastBranch + r * 2 + 1, i1 = lastBranch + rn * 2 + 1;
+    branchIndices.push(o0, o1, i0, o1, i1, i0);
+  }
+
+  const branchGeo = new THREE.BufferGeometry();
+  branchGeo.setAttribute('position', new THREE.Float32BufferAttribute(branchPositions, 3));
+  branchGeo.setIndex(branchIndices);
+  branchGeo.computeVertexNormals();
+  group.add(new THREE.Mesh(branchGeo, mat));
+
+  return group;
+}
+
+// Generate flange: plate with bolt holes + pipe stub.
+function generateFlange(pipeId, wallThick, flangeOd, plateThick, stubLen, boltCount, boltDiam, boltCircle) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const flangeR = flangeOd / 2;
+  const boltR = boltDiam / 2;
+  const boltCircleR = boltCircle / 2;
+  const group = new THREE.Group();
+
+  // Flange plate: LatheGeometry ring profile
+  const plateProfile = [
+    new THREE.Vector2(flangeR, 0),
+    new THREE.Vector2(flangeR, plateThick),
+    new THREE.Vector2(outerR, plateThick),
+    new THREE.Vector2(outerR, plateThick + stubLen),
+    new THREE.Vector2(innerR, plateThick + stubLen),
     new THREE.Vector2(innerR, 0),
-    new THREE.Vector2(outerR, 0),
+    new THREE.Vector2(flangeR, 0),
   ];
-  const mainGeo = new THREE.LatheGeometry(mainProfile, 64, 0, Math.PI * 2);
-  const mainMesh = new THREE.Mesh(mainGeo, mat);
-  mainMesh.position.y = -mainLen / 2;
-  group.add(mainMesh);
+  const plateGeo = new THREE.LatheGeometry(plateProfile, 64, 0, Math.PI * 2);
+  const plateMesh = new THREE.Mesh(plateGeo, mat);
+  plateMesh.position.y = -(plateThick + stubLen) / 2;
+  group.add(plateMesh);
 
-  // Branch pipe - same profile but rotated and positioned
-  const branchProfile = [
-    new THREE.Vector2(outerR, 0),
-    new THREE.Vector2(outerR, branchLen + outerR),
-    new THREE.Vector2(innerR, branchLen + outerR),
-    new THREE.Vector2(innerR, 0),
-    new THREE.Vector2(outerR, 0),
-  ];
-  const branchGeo = new THREE.LatheGeometry(branchProfile, 64, 0, Math.PI * 2);
-  const branchMesh = new THREE.Mesh(branchGeo, mat);
+  // Bolt holes as dark cylinders
+  const boltMat = new THREE.MeshPhongMaterial({ color: 0x0a0a1a, side: THREE.DoubleSide });
+  for (let i = 0; i < boltCount; i++) {
+    const angle = (i / boltCount) * Math.PI * 2;
+    const bx = Math.cos(angle) * boltCircleR;
+    const bz = Math.sin(angle) * boltCircleR;
+    const boltGeo = new THREE.CylinderGeometry(boltR, boltR, plateThick + 0.2, 16);
+    const bolt = new THREE.Mesh(boltGeo, boltMat);
+    bolt.position.set(bx, -(plateThick + stubLen) / 2 + plateThick / 2, bz);
+    group.add(bolt);
+  }
 
-  // Branch starts at center of main pipe, angled
-  // Default branch_angle=90 means perpendicular (along X)
-  // In OpenSCAD: rotate([0, -(90-branch_angle), 0]) which at 90 deg = no rotation = along Z
-  // For the preview: branch extends along a direction rotated from Y axis
-  // At 90°: branch goes along +X. At 45°: branch angles 45° from main.
-  branchMesh.rotation.z = -(Math.PI / 2 - branchAngleRad + Math.PI / 2);
-  // Simpler: at branch_angle=90 (perpendicular), rotate Z by -PI/2 to go from Y to X
-  // At branch_angle=A, rotate by -(PI/2 - (PI/2 - A)) = -A... let me just think:
-  // We want the branch along direction that's branchAngle from the main (Y) axis.
-  // At 90°: perpendicular = along X. Rotate Y->X = rotate -PI/2 around Z.
-  // At 45°: 45° from Y toward X. Rotate -45° around Z.
-  // General: rotate -(PI/2 - (PI/2 - branchAngle)) = nope...
-  // Just: rotate -branchAngle around Z. At 90° that rotates Y to X. At 45° rotates Y 45° toward X. Yes.
-  branchMesh.rotation.set(0, 0, -branchAngleRad);
+  return group;
+}
 
-  group.add(branchMesh);
+// Generate offset: S-bend using sweep geometry (two opposing arcs + stubs).
+function generateOffset(pipeId, wallThick, offsetDist, bendR, stubLen) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const ringSegs = 32;
 
+  // Calculate bend angle from offset distance and bend radius
+  // offset = 2 * R * (1 - cos(A))  =>  A = acos(1 - offset/(2*R))
+  const cosA = 1 - offsetDist / (2 * bendR);
+  if (cosA < -1 || cosA > 1) {
+    // Invalid geometry - offset too large for bend radius
+    const group = new THREE.Group();
+    return group;
+  }
+  const bendAngle = Math.acos(Math.max(-1, Math.min(1, cosA)));
+  const bendSegs = Math.max(8, Math.round(bendAngle * 180 / Math.PI / 2));
+
+  // Build path: stub1 → arc1 → arc2 (reversed) → stub2
+  // Arc 1: center at origin, radius bendR, in XZ plane from (bendR, 0, 0) sweeping by bendAngle
+  // Arc 2: mirrors arc1 to complete the S, shifted by offsetDist in X
+  const pathPoints = [];
+  const stubSegs = 2;
+
+  // Stub 1: straight along -Z from arc1 start
+  for (let i = 0; i <= stubSegs; i++) {
+    const t = i / stubSegs;
+    pathPoints.push({
+      pos: new THREE.Vector3(bendR, 0, -stubLen * (1 - t)),
+      tan: new THREE.Vector3(0, 0, 1),
+    });
+  }
+
+  // Arc 1: from phi=0 to phi=bendAngle (same as elbow)
+  for (let i = 1; i <= bendSegs; i++) {
+    const phi = (i / bendSegs) * bendAngle;
+    pathPoints.push({
+      pos: new THREE.Vector3(bendR * Math.cos(phi), 0, bendR * Math.sin(phi)),
+      tan: new THREE.Vector3(-Math.sin(phi), 0, Math.cos(phi)),
+    });
+  }
+
+  // Arc 2: reverse bend, center shifted so it connects smoothly
+  // End of arc1: pos = (bendR*cos(A), 0, bendR*sin(A)), tan = (-sin(A), 0, cos(A))
+  // Arc2 center: offset from arc1 end by bendR in the -tan-perpendicular direction
+  const arc1EndX = bendR * Math.cos(bendAngle);
+  const arc1EndZ = bendR * Math.sin(bendAngle);
+  const tanEndX = -Math.sin(bendAngle);
+  const tanEndZ = Math.cos(bendAngle);
+  // Normal to tangent (pointing away from arc1 center): direction from arc1center(0,0,0) to arc1end
+  // Actually for S-bend, arc2 bends the opposite way
+  // Arc2 center = arc1End + bendR * (direction from arc1end toward arc1center rotated 180)
+  // Simpler: arc2 center is at (arc1EndX + bendR * cos(A), 0, arc1EndZ + bendR * sin(A))... no
+  // Let me think: at end of arc1, tangent is (-sin(A), 0, cos(A)).
+  // Arc2 curves the other way. Its center is offset from arc1End by bendR perpendicular to tangent,
+  // on the OPPOSITE side from arc1's center.
+  // Arc1's center is at origin. Direction from arc1End to arc1Center: -arc1End normalized.
+  // Arc2's center should be on the opposite side: arc1End + bendR * (arc1End/|arc1End|)
+  const arc2CenterX = arc1EndX + (arc1EndX / bendR) * bendR; // = 2*arc1EndX
+  const arc2CenterZ = arc1EndZ + (arc1EndZ / bendR) * bendR; // = 2*arc1EndZ
+  // Hmm that's 2*bendR*cos(A), 2*bendR*sin(A). Let me verify with offset=30, R=40, A=acos(1-30/80)=acos(0.625)=51.3°
+  // arc2Center = (2*40*cos(51.3), 0, 2*40*sin(51.3)) = (50.0, 0, 62.4)
+  // Arc2 sweeps from bendAngle back to 0 (going backward), centered at arc2Center
+  // Arc2 at phi=0 (relative): pos = arc2Center + bendR*(-cos(A), 0, -sin(A)) = arc1End ✓
+
+  for (let i = 1; i <= bendSegs; i++) {
+    const t = i / bendSegs;
+    const phi = bendAngle - t * bendAngle; // sweeps from bendAngle back to 0
+    const px = arc2CenterX - bendR * Math.cos(phi);
+    const pz = arc2CenterZ - bendR * Math.sin(phi);
+    // Tangent: derivative of (-cos(phi), 0, -sin(phi)) * d(phi)/dt, where phi decreases
+    // dphi/dt = -bendAngle, so tangent = (sin(phi), 0, cos(phi)) * (-1) * (-1) = (sin(phi), 0, cos(phi))...
+    // Let's just compute: direction from this point to next point
+    const phiNext = bendAngle - (Math.min(i + 0.5, bendSegs)) / bendSegs * bendAngle;
+    const nx = arc2CenterX - bendR * Math.cos(phiNext);
+    const nz = arc2CenterZ - bendR * Math.sin(phiNext);
+    const dx = nx - px, dz = nz - pz;
+    const len = Math.sqrt(dx * dx + dz * dz) || 1;
+    pathPoints.push({
+      pos: new THREE.Vector3(px, 0, pz),
+      tan: new THREE.Vector3(dx / len, 0, dz / len),
+    });
+  }
+
+  // Stub 2: extends along tangent at end of arc2
+  const lastPt = pathPoints[pathPoints.length - 1];
+  const endTan = lastPt.tan.clone();
+  for (let i = 1; i <= stubSegs; i++) {
+    const t = i / stubSegs;
+    pathPoints.push({
+      pos: lastPt.pos.clone().add(endTan.clone().multiplyScalar(stubLen * t)),
+      tan: endTan.clone(),
+    });
+  }
+
+  // Sweep hollow ring along path (same as elbow)
+  const positions = [];
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let p = 0; p < pathPoints.length; p++) {
+    const { pos, tan } = pathPoints[p];
+    const T = tan.clone().normalize();
+    const B = new THREE.Vector3().crossVectors(T, up).normalize();
+    const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+    for (let r = 0; r < ringSegs; r++) {
+      const theta = (r / ringSegs) * Math.PI * 2;
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+      positions.push(
+        pos.x + B.x * c * outerR + N.x * s * outerR,
+        pos.y + B.y * c * outerR + N.y * s * outerR,
+        pos.z + B.z * c * outerR + N.z * s * outerR,
+      );
+      positions.push(
+        pos.x + B.x * c * innerR + N.x * s * innerR,
+        pos.y + B.y * c * innerR + N.y * s * innerR,
+        pos.z + B.z * c * innerR + N.z * s * innerR,
+      );
+    }
+  }
+
+  const vertsPerRing = ringSegs * 2;
+  const indices = [];
+
+  for (let p = 0; p < pathPoints.length - 1; p++) {
+    for (let r = 0; r < ringSegs; r++) {
+      const rn = (r + 1) % ringSegs;
+      const base0 = p * vertsPerRing;
+      const base1 = (p + 1) * vertsPerRing;
+      const o00 = base0 + r * 2, o01 = base0 + rn * 2;
+      const o10 = base1 + r * 2, o11 = base1 + rn * 2;
+      indices.push(o00, o10, o01, o01, o10, o11);
+      indices.push(o00 + 1, o01 + 1, o10 + 1, o01 + 1, o11 + 1, o10 + 1);
+    }
+  }
+
+  // End caps
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = r * 2, o1 = rn * 2, i0 = r * 2 + 1, i1 = rn * 2 + 1;
+    indices.push(o0, i0, o1, o1, i0, i1);
+  }
+  const last = (pathPoints.length - 1) * vertsPerRing;
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = last + r * 2, o1 = last + rn * 2, i0 = last + r * 2 + 1, i1 = last + rn * 2 + 1;
+    indices.push(o0, o1, i0, o1, i1, i0);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  geo.computeBoundingBox();
+  const center = new THREE.Vector3();
+  geo.boundingBox.getCenter(center);
+  geo.translate(-center.x, -center.y, -center.z);
+
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(geo, mat));
   return group;
 }
 
@@ -667,6 +1033,29 @@ function updatePreview() {
 
       document.getElementById('dims').textContent =
         `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Branch: ${bAngle}\u00B0 | Main: ${mainL}mm`;
+    } else if (currentType === 'flange') {
+      const pipeId = parseFloat(document.getElementById('f_pipe_id').value);
+      const wall = parseFloat(document.getElementById('f_wall_thickness').value);
+      const fOd = parseFloat(document.getElementById('flange_od').value);
+      const pThick = parseFloat(document.getElementById('plate_thickness').value);
+      const stub = parseFloat(document.getElementById('f_stub_length').value);
+      const bCount = parseInt(document.getElementById('bolt_count').value);
+      const bDiam = parseFloat(document.getElementById('bolt_diameter').value);
+      const bCircle = parseFloat(document.getElementById('bolt_circle').value);
+      currentGroup = generateFlange(pipeId, wall, fOd, pThick, stub, bCount, bDiam, bCircle);
+
+      document.getElementById('dims').textContent =
+        `Pipe ID: ${pipeId.toFixed(1)}mm | Flange: ${fOd}mm | ${bCount}x \u00D8${bDiam}mm bolts`;
+    } else if (currentType === 'offset') {
+      const pipeId = parseFloat(document.getElementById('o_pipe_id').value);
+      const wall = parseFloat(document.getElementById('o_wall_thickness').value);
+      const offDist = parseFloat(document.getElementById('offset_distance').value);
+      const bendR = parseFloat(document.getElementById('o_bend_radius').value);
+      const stub = parseFloat(document.getElementById('o_stub_length').value);
+      currentGroup = generateOffset(pipeId, wall, offDist, bendR, stub);
+
+      document.getElementById('dims').textContent =
+        `ID: ${pipeId.toFixed(1)}mm | Offset: ${offDist}mm | Bend R: ${bendR}mm`;
     }
 
     scene.add(currentGroup);
@@ -697,7 +1086,7 @@ function animate() {
 window.switchType = function(type) {
   currentType = type;
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
-  ['elbow', 'reducer', 'escutcheon', 'coupling', 'cap', 'tee'].forEach(t => {
+  ['elbow', 'reducer', 'escutcheon', 'coupling', 'cap', 'tee', 'flange', 'offset'].forEach(t => {
     const el = document.getElementById(t + '-controls');
     if (el) el.style.display = type === t ? 'block' : 'none';
   });
@@ -706,7 +1095,7 @@ window.switchType = function(type) {
 
 window.updateParam = function(el) {
   const val = parseFloat(el.value);
-  const suffix = (el.id === 'angle' || el.id === 'branch_angle') ? '\u00B0' : 'mm';
+  const suffix = (el.id === 'angle' || el.id === 'branch_angle') ? '\u00B0' : el.id === 'bolt_count' ? '' : 'mm';
   const label = document.getElementById('v-' + el.id);
   if (label) label.textContent = val + suffix;
   updatePreview();
@@ -721,6 +1110,8 @@ window.setPreset = function(diameter) {
     coupling: 'c_pipe_id',
     cap: 'cap_pipe_id',
     tee: 't_pipe_id',
+    flange: 'f_pipe_id',
+    offset: 'o_pipe_id',
   };
   if (currentType === 'escutcheon') {
     const slider = document.getElementById('pipe_od');
@@ -783,6 +1174,25 @@ window.downloadSTL = async function() {
       branch_angle: document.getElementById('branch_angle').value,
       main_length: document.getElementById('main_length').value,
       branch_length: document.getElementById('branch_length').value,
+    };
+  } else if (currentType === 'flange') {
+    params = {
+      pipe_id: document.getElementById('f_pipe_id').value,
+      wall_thickness: document.getElementById('f_wall_thickness').value,
+      flange_od: document.getElementById('flange_od').value,
+      plate_thickness: document.getElementById('plate_thickness').value,
+      stub_length: document.getElementById('f_stub_length').value,
+      bolt_count: document.getElementById('bolt_count').value,
+      bolt_diameter: document.getElementById('bolt_diameter').value,
+      bolt_circle: document.getElementById('bolt_circle').value,
+    };
+  } else if (currentType === 'offset') {
+    params = {
+      pipe_id: document.getElementById('o_pipe_id').value,
+      wall_thickness: document.getElementById('o_wall_thickness').value,
+      offset_distance: document.getElementById('offset_distance').value,
+      bend_radius: document.getElementById('o_bend_radius').value,
+      stub_length: document.getElementById('o_stub_length').value,
     };
   }
 
