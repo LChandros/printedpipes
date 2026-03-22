@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrintedPipes - Custom Pipe Fittings</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #1a1a2e; color: #e0e0e0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; height: 100vh; }
+
+  .layout { display: flex; height: 100vh; }
+
+  /* Sidebar */
+  .sidebar { width: 340px; background: #16213e; padding: 20px; overflow-y: auto; border-right: 1px solid #0f3460; flex-shrink: 0; }
+  .sidebar h1 { font-size: 22px; margin-bottom: 4px; color: #e94560; }
+  .sidebar .subtitle { font-size: 12px; color: #888; margin-bottom: 20px; }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .tab { flex: 1; padding: 10px; text-align: center; background: #0f3460; border: none; color: #aaa; cursor: pointer; border-radius: 6px; font-size: 14px; font-weight: 600; transition: all 0.2s; }
+  .tab.active { background: #e94560; color: white; }
+  .tab:hover:not(.active) { background: #1a4080; }
+
+  /* Controls */
+  .control-group { margin-bottom: 16px; }
+  .control-group label { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 4px; color: #aaa; }
+  .control-group label span { color: #e94560; font-weight: 600; font-family: monospace; }
+  input[type="range"] { width: 100%; height: 6px; -webkit-appearance: none; background: #0f3460; border-radius: 3px; outline: none; }
+  input[type="range"]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; border-radius: 50%; background: #e94560; cursor: pointer; }
+
+  /* Common pipe sizes */
+  .presets { margin-bottom: 16px; }
+  .presets label { display: block; font-size: 12px; color: #888; margin-bottom: 6px; }
+  .preset-btns { display: flex; flex-wrap: wrap; gap: 4px; }
+  .preset-btn { padding: 4px 10px; background: #0f3460; border: 1px solid #1a4080; color: #ccc; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .preset-btn:hover { background: #1a4080; }
+  .preset-btn.active { background: #e94560; border-color: #e94560; color: white; }
+
+  /* Download button */
+  .download-btn { width: 100%; padding: 14px; background: #e94560; color: white; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; margin-top: 20px; transition: background 0.2s; }
+  .download-btn:hover { background: #c73652; }
+  .download-btn:disabled { background: #555; cursor: wait; }
+
+  .info { font-size: 11px; color: #666; margin-top: 12px; line-height: 1.5; }
+
+  /* 3D viewport */
+  .viewport { flex: 1; position: relative; }
+  #canvas { width: 100%; height: 100%; display: block; }
+  .dims { position: absolute; bottom: 16px; left: 16px; background: rgba(22, 33, 62, 0.9); padding: 8px 14px; border-radius: 6px; font-size: 12px; font-family: monospace; color: #aaa; }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <div class="sidebar">
+    <h1>PrintedPipes</h1>
+    <p class="subtitle">Custom 3D-printed pipe fittings</p>
+
+    <div class="tabs">
+      <button class="tab active" data-type="elbow" onclick="switchType('elbow')">Elbow</button>
+      <button class="tab" data-type="reducer" onclick="switchType('reducer')">Reducer</button>
+    </div>
+
+    <!-- Common pipe sizes -->
+    <div class="presets">
+      <label>Common pipe sizes (ID):</label>
+      <div class="preset-btns">
+        <button class="preset-btn" onclick="setPreset(12.7)">1/2"</button>
+        <button class="preset-btn" onclick="setPreset(19.05)">3/4"</button>
+        <button class="preset-btn active" onclick="setPreset(25.4)">1"</button>
+        <button class="preset-btn" onclick="setPreset(31.75)">1-1/4"</button>
+        <button class="preset-btn" onclick="setPreset(38.1)">1-1/2"</button>
+        <button class="preset-btn" onclick="setPreset(50.8)">2"</button>
+        <button class="preset-btn" onclick="setPreset(76.2)">3"</button>
+        <button class="preset-btn" onclick="setPreset(101.6)">4"</button>
+      </div>
+    </div>
+
+    <!-- Elbow controls -->
+    <div id="elbow-controls">
+      <div class="control-group">
+        <label>Pipe Inner Diameter <span id="v-pipe_id">25.4mm</span></label>
+        <input type="range" id="pipe_id" min="10" max="150" step="0.1" value="25.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-wall_thickness">3mm</span></label>
+        <input type="range" id="wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bend Angle <span id="v-angle">90&deg;</span></label>
+        <input type="range" id="angle" min="1" max="180" step="1" value="90" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Bend Radius <span id="v-bend_radius">40mm</span></label>
+        <input type="range" id="bend_radius" min="15" max="200" step="1" value="40" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Stub Length <span id="v-stub_length">20mm</span></label>
+        <input type="range" id="stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Reducer controls -->
+    <div id="reducer-controls" style="display:none">
+      <div class="control-group">
+        <label>Large End ID <span id="v-id_large">31.75mm</span></label>
+        <input type="range" id="id_large" min="15" max="150" step="0.1" value="31.75" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Small End ID <span id="v-id_small">19.05mm</span></label>
+        <input type="range" id="id_small" min="10" max="140" step="0.1" value="19.05" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Wall Thickness <span id="v-r_wall_thickness">3mm</span></label>
+        <input type="range" id="r_wall_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Transition Length <span id="v-transition_length">30mm</span></label>
+        <input type="range" id="transition_length" min="10" max="100" step="1" value="30" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Stub Length <span id="v-r_stub_length">20mm</span></label>
+        <input type="range" id="r_stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <button class="download-btn" onclick="downloadSTL()">Download STL</button>
+
+    <p class="info">
+      Preview is approximate. Downloaded STL is generated by OpenSCAD with full precision.
+      Not rated for pressurized applications. Use at your own risk.
+    </p>
+  </div>
+
+  <div class="viewport">
+    <canvas id="canvas"></canvas>
+    <div class="dims" id="dims"></div>
+  </div>
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.164.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.164.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// Scene setup
+const canvas = document.getElementById('canvas');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(window.devicePixelRatio);
+renderer.setClearColor(0x1a1a2e);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 1000);
+camera.position.set(80, 60, 80);
+
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true;
+controls.dampingFactor = 0.1;
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(50, 80, 50);
+scene.add(dirLight);
+const dirLight2 = new THREE.DirectionalLight(0x4488ff, 0.3);
+dirLight2.position.set(-30, -20, -40);
+scene.add(dirLight2);
+
+// Grid
+scene.add(new THREE.GridHelper(200, 20, 0x0f3460, 0x0a1530));
+
+// Material
+const mat = new THREE.MeshPhongMaterial({
+  color: 0x4488cc,
+  specular: 0x222244,
+  shininess: 40,
+  side: THREE.DoubleSide,
+});
+
+let currentGroup = null;
+let currentType = 'elbow';
+
+function clearMesh() {
+  if (currentGroup) {
+    currentGroup.traverse(child => {
+      if (child.isMesh) {
+        child.geometry.dispose();
+      }
+    });
+    scene.remove(currentGroup);
+    currentGroup = null;
+  }
+}
+
+// Elbow: single BufferGeometry built by sweeping a hollow ring cross-section
+// along the full path (stub1 straight → arc → stub2 straight).
+// One mesh, no separate pieces, no rotation math.
+function generateElbow(pipeId, wallThick, angleDeg, bendR, stubLen) {
+  const innerR = pipeId / 2;
+  const outerR = innerR + wallThick;
+  const angleRad = angleDeg * Math.PI / 180;
+  const ringSegs = 32;
+  const stubSegs = 2;
+  const bendSegs = Math.max(8, Math.round(angleDeg / 2));
+
+  // --- Build centerline path ---
+  // Bend arc in XZ plane: pos = (bendR*cos(phi), 0, bendR*sin(phi))
+  // At phi=0: pos=(bendR,0,0), tangent=(0,0,1)
+  // Stub1 extends backward from phi=0 along -Z
+  // Stub2 extends forward from phi=angle along tangent
+  const pathPoints = []; // {pos, tangent}
+
+  // Stub 1: straight from (bendR, 0, -stubLen) to (bendR, 0, 0)
+  for (let i = 0; i <= stubSegs; i++) {
+    const t = i / stubSegs;
+    pathPoints.push({
+      pos: new THREE.Vector3(bendR, 0, -stubLen * (1 - t)),
+      tan: new THREE.Vector3(0, 0, 1),
+    });
+  }
+
+  // Bend arc: phi=0 to phi=angle (skip phi=0, stub end already covers it)
+  for (let i = 1; i <= bendSegs; i++) {
+    const phi = (i / bendSegs) * angleRad;
+    pathPoints.push({
+      pos: new THREE.Vector3(bendR * Math.cos(phi), 0, bendR * Math.sin(phi)),
+      tan: new THREE.Vector3(-Math.sin(phi), 0, Math.cos(phi)),
+    });
+  }
+
+  // Stub 2: from end of bend along end tangent
+  const endPhi = angleRad;
+  const endPos = new THREE.Vector3(bendR * Math.cos(endPhi), 0, bendR * Math.sin(endPhi));
+  const endTan = new THREE.Vector3(-Math.sin(endPhi), 0, Math.cos(endPhi));
+  for (let i = 1; i <= stubSegs; i++) {
+    const t = i / stubSegs;
+    pathPoints.push({
+      pos: endPos.clone().add(endTan.clone().multiplyScalar(stubLen * t)),
+      tan: endTan.clone(),
+    });
+  }
+
+  // --- Generate vertices: at each path point, place outer + inner ring ---
+  const positions = [];
+  const up = new THREE.Vector3(0, 1, 0);
+
+  for (let p = 0; p < pathPoints.length; p++) {
+    const { pos, tan } = pathPoints[p];
+    const T = tan.clone().normalize();
+    const B = new THREE.Vector3().crossVectors(T, up).normalize();
+    const N = new THREE.Vector3().crossVectors(B, T).normalize();
+
+    for (let r = 0; r < ringSegs; r++) {
+      const theta = (r / ringSegs) * Math.PI * 2;
+      const c = Math.cos(theta);
+      const s = Math.sin(theta);
+
+      // Outer vertex
+      positions.push(
+        pos.x + B.x * c * outerR + N.x * s * outerR,
+        pos.y + B.y * c * outerR + N.y * s * outerR,
+        pos.z + B.z * c * outerR + N.z * s * outerR,
+      );
+      // Inner vertex
+      positions.push(
+        pos.x + B.x * c * innerR + N.x * s * innerR,
+        pos.y + B.y * c * innerR + N.y * s * innerR,
+        pos.z + B.z * c * innerR + N.z * s * innerR,
+      );
+    }
+  }
+
+  const vertsPerRing = ringSegs * 2; // alternating outer, inner
+  const indices = [];
+
+  // --- Stitch adjacent rings into quads ---
+  for (let p = 0; p < pathPoints.length - 1; p++) {
+    for (let r = 0; r < ringSegs; r++) {
+      const rn = (r + 1) % ringSegs;
+      const base0 = p * vertsPerRing;
+      const base1 = (p + 1) * vertsPerRing;
+
+      // Outer surface
+      const o00 = base0 + r * 2;
+      const o01 = base0 + rn * 2;
+      const o10 = base1 + r * 2;
+      const o11 = base1 + rn * 2;
+      indices.push(o00, o10, o01, o01, o10, o11);
+
+      // Inner surface (reversed winding)
+      indices.push(o00 + 1, o01 + 1, o10 + 1, o01 + 1, o11 + 1, o10 + 1);
+    }
+  }
+
+  // --- End caps (annular rings connecting outer to inner) ---
+  // Start cap
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = r * 2, o1 = rn * 2, i0 = r * 2 + 1, i1 = rn * 2 + 1;
+    indices.push(o0, i0, o1, o1, i0, i1);
+  }
+  // End cap
+  const last = (pathPoints.length - 1) * vertsPerRing;
+  for (let r = 0; r < ringSegs; r++) {
+    const rn = (r + 1) % ringSegs;
+    const o0 = last + r * 2, o1 = last + rn * 2, i0 = last + r * 2 + 1, i1 = last + rn * 2 + 1;
+    indices.push(o0, o1, i0, o1, i1, i0);
+  }
+
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setIndex(indices);
+  geo.computeVertexNormals();
+
+  // Center it
+  geo.computeBoundingBox();
+  const center = new THREE.Vector3();
+  geo.boundingBox.getCenter(center);
+  geo.translate(-center.x, -center.y, -center.z);
+
+  const group = new THREE.Group();
+  group.add(new THREE.Mesh(geo, mat));
+  return group;
+}
+
+// Generate reducer: one single LatheGeometry revolution of the full cross-section profile.
+// Profile = the outline of the pipe wall in cross-section (large stub + taper + small stub).
+function generateReducer(idLarge, idSmall, wallThick, transLen, stubLen) {
+  const innerLarge = idLarge / 2;
+  const outerLarge = innerLarge + wallThick;
+  const innerSmall = idSmall / 2;
+  const outerSmall = innerSmall + wallThick;
+  const totalH = stubLen + transLen + stubLen;
+
+  // Profile points (Vector2: x = distance from axis, y = height)
+  // Trace the entire cross-section as a closed loop:
+  // Start at bottom-outer, go up outer wall, across top, down inner wall, across bottom
+  const profile = [
+    // Outer wall, bottom to top
+    new THREE.Vector2(outerLarge, 0),                            // bottom-outer-left
+    new THREE.Vector2(outerLarge, stubLen),                      // end of large stub outer
+    new THREE.Vector2(outerSmall, stubLen + transLen),           // end of transition outer
+    new THREE.Vector2(outerSmall, totalH),                       // top of small stub outer
+    // Top cap (ring)
+    new THREE.Vector2(innerSmall, totalH),                       // top of small stub inner
+    // Inner wall, top to bottom
+    new THREE.Vector2(innerSmall, stubLen + transLen),           // end of transition inner
+    new THREE.Vector2(innerLarge, stubLen),                      // end of large stub inner
+    new THREE.Vector2(innerLarge, 0),                            // bottom-inner
+    // Bottom cap (ring) - close the loop
+    new THREE.Vector2(outerLarge, 0),                            // back to start
+  ];
+
+  // LatheGeometry revolves this profile 360 degrees around Y
+  const geo = new THREE.LatheGeometry(profile, 64, 0, Math.PI * 2);
+  const mesh = new THREE.Mesh(geo, mat);
+  // Center vertically
+  mesh.position.y = -totalH / 2;
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
+function updatePreview() {
+  clearMesh();
+
+  try {
+    if (currentType === 'elbow') {
+      const pipeId = parseFloat(document.getElementById('pipe_id').value);
+      const wall = parseFloat(document.getElementById('wall_thickness').value);
+      const angle = parseFloat(document.getElementById('angle').value);
+      const bendR = parseFloat(document.getElementById('bend_radius').value);
+      const stub = parseFloat(document.getElementById('stub_length').value);
+      currentGroup = generateElbow(pipeId, wall, angle, bendR, stub);
+
+      document.getElementById('dims').textContent =
+        `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Angle: ${angle}\u00B0 | Bend R: ${bendR}mm`;
+    } else {
+      const idL = parseFloat(document.getElementById('id_large').value);
+      const idS = parseFloat(document.getElementById('id_small').value);
+      const wall = parseFloat(document.getElementById('r_wall_thickness').value);
+      const trans = parseFloat(document.getElementById('transition_length').value);
+      const stub = parseFloat(document.getElementById('r_stub_length').value);
+      currentGroup = generateReducer(idL, idS, wall, trans, stub);
+
+      document.getElementById('dims').textContent =
+        `Large: ${idL.toFixed(1)}mm \u2192 Small: ${idS.toFixed(1)}mm | Wall: ${wall}mm | Length: ${trans}mm`;
+    }
+
+    scene.add(currentGroup);
+  } catch(e) {
+    console.error('Preview error:', e);
+  }
+}
+
+// Resize handling
+function resize() {
+  const vp = document.querySelector('.viewport');
+  const w = vp.clientWidth;
+  const h = vp.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+
+// Animation loop
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// Expose to global scope
+window.switchType = function(type) {
+  currentType = type;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
+  document.getElementById('elbow-controls').style.display = type === 'elbow' ? 'block' : 'none';
+  document.getElementById('reducer-controls').style.display = type === 'reducer' ? 'block' : 'none';
+  updatePreview();
+};
+
+window.updateParam = function(el) {
+  const val = parseFloat(el.value);
+  const suffix = el.id === 'angle' ? '\u00B0' : 'mm';
+  const label = document.getElementById('v-' + el.id);
+  if (label) label.textContent = val + suffix;
+  updatePreview();
+};
+
+window.setPreset = function(diameter) {
+  document.querySelectorAll('.preset-btn').forEach(b => b.classList.remove('active'));
+  if (event && event.target) event.target.classList.add('active');
+  if (currentType === 'elbow') {
+    const slider = document.getElementById('pipe_id');
+    slider.value = diameter;
+    window.updateParam(slider);
+  } else {
+    const slider = document.getElementById('id_large');
+    slider.value = diameter;
+    window.updateParam(slider);
+  }
+};
+
+window.downloadSTL = async function() {
+  const btn = document.querySelector('.download-btn');
+  btn.disabled = true;
+  btn.textContent = 'Generating STL...';
+
+  let params;
+  if (currentType === 'elbow') {
+    params = {
+      pipe_id: document.getElementById('pipe_id').value,
+      wall_thickness: document.getElementById('wall_thickness').value,
+      angle: document.getElementById('angle').value,
+      bend_radius: document.getElementById('bend_radius').value,
+      stub_length: document.getElementById('stub_length').value,
+    };
+  } else {
+    params = {
+      id_large: document.getElementById('id_large').value,
+      id_small: document.getElementById('id_small').value,
+      wall_thickness: document.getElementById('r_wall_thickness').value,
+      transition_length: document.getElementById('transition_length').value,
+      stub_length: document.getElementById('r_stub_length').value,
+    };
+  }
+
+  try {
+    const resp = await fetch('/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: currentType, params }),
+    });
+
+    if (!resp.ok) {
+      const err = await resp.json();
+      alert('Error: ' + (err.error || 'Generation failed'));
+      return;
+    }
+
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = currentType + '_custom.stl';
+    a.click();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert('Error: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Download STL';
+  }
+};
+
+// Init
+resize();
+updatePreview();
+animate();
+
+console.log('PrintedPipes frontend loaded');
+</script>
+
+</body>
+</html>
