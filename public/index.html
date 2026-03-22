@@ -59,6 +59,7 @@
     <div class="tabs">
       <button class="tab active" data-type="elbow" onclick="switchType('elbow')">Elbow</button>
       <button class="tab" data-type="reducer" onclick="switchType('reducer')">Reducer</button>
+      <button class="tab" data-type="escutcheon" onclick="switchType('escutcheon')">Escutcheon</button>
     </div>
 
     <!-- Common pipe sizes -->
@@ -121,6 +122,30 @@
       <div class="control-group">
         <label>Stub Length <span id="v-r_stub_length">20mm</span></label>
         <input type="range" id="r_stub_length" min="5" max="50" step="1" value="20" oninput="updateParam(this)">
+      </div>
+    </div>
+
+    <!-- Escutcheon controls -->
+    <div id="escutcheon-controls" style="display:none">
+      <div class="control-group">
+        <label>Pipe Outer Diameter <span id="v-pipe_od">28.4mm</span></label>
+        <input type="range" id="pipe_od" min="10" max="120" step="0.1" value="28.4" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Plate Outer Diameter <span id="v-plate_od">70mm</span></label>
+        <input type="range" id="plate_od" min="30" max="200" step="1" value="70" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Thickness <span id="v-e_thickness">3mm</span></label>
+        <input type="range" id="e_thickness" min="1" max="10" step="0.5" value="3" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Edge Chamfer <span id="v-chamfer">1.5mm</span></label>
+        <input type="range" id="chamfer" min="0" max="5" step="0.5" value="1.5" oninput="updateParam(this)">
+      </div>
+      <div class="control-group">
+        <label>Gap Tolerance <span id="v-gap">0.5mm</span></label>
+        <input type="range" id="gap" min="0" max="3" step="0.1" value="0.5" oninput="updateParam(this)">
       </div>
     </div>
 
@@ -370,6 +395,42 @@ function generateReducer(idLarge, idSmall, wallThick, transLen, stubLen) {
   return group;
 }
 
+// Generate escutcheon: single LatheGeometry of the plate cross-section profile.
+function generateEscutcheon(pipeOd, plateOd, thickness, chamfer, gapTol) {
+  const holeR = pipeOd / 2 + gapTol;
+  const outerR = plateOd / 2;
+  const cham = Math.min(chamfer, thickness - 0.1); // clamp chamfer to plate thickness
+
+  // Profile: cross-section of the plate (traced as closed loop, revolved 360)
+  const profile = [];
+  if (cham > 0) {
+    profile.push(
+      new THREE.Vector2(outerR, 0),                          // bottom outer edge
+      new THREE.Vector2(outerR, thickness - cham),           // start of chamfer
+      new THREE.Vector2(outerR - cham, thickness),           // top outer edge (chamfered)
+      new THREE.Vector2(holeR, thickness),                   // top inner (at hole)
+      new THREE.Vector2(holeR, 0),                           // bottom inner (at hole)
+      new THREE.Vector2(outerR, 0),                          // close loop
+    );
+  } else {
+    profile.push(
+      new THREE.Vector2(outerR, 0),
+      new THREE.Vector2(outerR, thickness),
+      new THREE.Vector2(holeR, thickness),
+      new THREE.Vector2(holeR, 0),
+      new THREE.Vector2(outerR, 0),
+    );
+  }
+
+  const geo = new THREE.LatheGeometry(profile, 64, 0, Math.PI * 2);
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.position.y = -thickness / 2;
+
+  const group = new THREE.Group();
+  group.add(mesh);
+  return group;
+}
+
 function updatePreview() {
   clearMesh();
 
@@ -384,7 +445,7 @@ function updatePreview() {
 
       document.getElementById('dims').textContent =
         `ID: ${pipeId.toFixed(1)}mm | OD: ${(pipeId + 2*wall).toFixed(1)}mm | Angle: ${angle}\u00B0 | Bend R: ${bendR}mm`;
-    } else {
+    } else if (currentType === 'reducer') {
       const idL = parseFloat(document.getElementById('id_large').value);
       const idS = parseFloat(document.getElementById('id_small').value);
       const wall = parseFloat(document.getElementById('r_wall_thickness').value);
@@ -394,6 +455,16 @@ function updatePreview() {
 
       document.getElementById('dims').textContent =
         `Large: ${idL.toFixed(1)}mm \u2192 Small: ${idS.toFixed(1)}mm | Wall: ${wall}mm | Length: ${trans}mm`;
+    } else if (currentType === 'escutcheon') {
+      const pipeOd = parseFloat(document.getElementById('pipe_od').value);
+      const plateOd = parseFloat(document.getElementById('plate_od').value);
+      const thick = parseFloat(document.getElementById('e_thickness').value);
+      const cham = parseFloat(document.getElementById('chamfer').value);
+      const gap = parseFloat(document.getElementById('gap').value);
+      currentGroup = generateEscutcheon(pipeOd, plateOd, thick, cham, gap);
+
+      document.getElementById('dims').textContent =
+        `Pipe OD: ${pipeOd.toFixed(1)}mm | Plate: ${plateOd.toFixed(0)}mm | Thick: ${thick}mm | Hole: ${(pipeOd + gap*2).toFixed(1)}mm`;
     }
 
     scene.add(currentGroup);
@@ -426,6 +497,7 @@ window.switchType = function(type) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.type === type));
   document.getElementById('elbow-controls').style.display = type === 'elbow' ? 'block' : 'none';
   document.getElementById('reducer-controls').style.display = type === 'reducer' ? 'block' : 'none';
+  document.getElementById('escutcheon-controls').style.display = type === 'escutcheon' ? 'block' : 'none';
   updatePreview();
 };
 
@@ -444,9 +516,14 @@ window.setPreset = function(diameter) {
     const slider = document.getElementById('pipe_id');
     slider.value = diameter;
     window.updateParam(slider);
-  } else {
+  } else if (currentType === 'reducer') {
     const slider = document.getElementById('id_large');
     slider.value = diameter;
+    window.updateParam(slider);
+  } else if (currentType === 'escutcheon') {
+    // Presets are pipe ID, escutcheon needs pipe OD (add ~3mm for wall)
+    const slider = document.getElementById('pipe_od');
+    slider.value = diameter + 3;
     window.updateParam(slider);
   }
 };
@@ -465,13 +542,21 @@ window.downloadSTL = async function() {
       bend_radius: document.getElementById('bend_radius').value,
       stub_length: document.getElementById('stub_length').value,
     };
-  } else {
+  } else if (currentType === 'reducer') {
     params = {
       id_large: document.getElementById('id_large').value,
       id_small: document.getElementById('id_small').value,
       wall_thickness: document.getElementById('r_wall_thickness').value,
       transition_length: document.getElementById('transition_length').value,
       stub_length: document.getElementById('r_stub_length').value,
+    };
+  } else if (currentType === 'escutcheon') {
+    params = {
+      pipe_od: document.getElementById('pipe_od').value,
+      plate_od: document.getElementById('plate_od').value,
+      thickness: document.getElementById('e_thickness').value,
+      chamfer: document.getElementById('chamfer').value,
+      gap: document.getElementById('gap').value,
     };
   }
 

@@ -29,6 +29,13 @@ const PARAM_RANGES = {
     wall_thickness: { min: 1, max: 10, default: 3 },
     transition_length: { min: 10, max: 100, default: 30 },
     stub_length: { min: 5, max: 50, default: 20 },
+  },
+  escutcheon: {
+    pipe_od: { min: 10, max: 120, default: 28.4 },
+    plate_od: { min: 30, max: 200, default: 70 },
+    thickness: { min: 1, max: 10, default: 3 },
+    chamfer: { min: 0, max: 5, default: 1.5 },
+    gap: { min: 0, max: 3, default: 0.5 },
   }
 };
 
